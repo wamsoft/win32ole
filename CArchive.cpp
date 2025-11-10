@@ -3,7 +3,7 @@
 #include <windows.h>
 #include "tp_stub.h"
 
-#define PROTOCOL L"krkr"
+#define PROTOCOL TJS_W("krkr")
 
 /**
  * Asynchronous Pluggable Protocols による IE/URL Moniker からの
@@ -30,7 +30,7 @@ public:
 	//----------------------------------------------------------------------------
 	// IUnknown 実装
 public:
-	HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void __RPC_FAR *__RPC_FAR *ppvObject) {
+	HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void **ppvObject) {
 		
 		if (riid == IID_IUnknown ||
 			riid == IID_IInternetProtocol ||
@@ -65,17 +65,17 @@ public:
 public:
 	HRESULT STDMETHODCALLTYPE Start( 
 		/* [in] */ LPCWSTR szUrl,
-        /* [in] */ IInternetProtocolSink __RPC_FAR *pOIProtSink,
-		/* [in] */ IInternetBindInfo __RPC_FAR *pOIBindInfo,
+        /* [in] */ IInternetProtocolSink *pOIProtSink,
+		/* [in] */ IInternetBindInfo *pOIBindInfo,
         /* [in] */ DWORD grfPI,
-		/* [in] */ DWORD dwReserved) {
+		/* [in] */ HANDLE_PTR dwReserved) {
 
-		LPCWSTR p = wcsstr(szUrl, PROTOCOL L":");
+		LPCWSTR p = wcsstr(szUrl, PROTOCOL TJS_W(":"));
 
 		//TVPAddLog(ttstr(p));
 
 		if (p) {
-			p += wcslen(PROTOCOL L":");
+			p += TJS_strlen(PROTOCOL TJS_W(":"));
 
 			//TVPAddLog(ttstr(p));
 			
@@ -106,7 +106,7 @@ public:
 	}
 	
 	HRESULT STDMETHODCALLTYPE Continue( 
-		/* [in] */ PROTOCOLDATA __RPC_FAR *pProtocolData) {
+		/* [in] */ PROTOCOLDATA *pProtocolData) {
 		return S_OK;
 	}
     
@@ -137,9 +137,9 @@ public:
 	// IInternetProtocol 実装
 public:
     HRESULT STDMETHODCALLTYPE Read( 
-        /* [length_is][size_is][out][in] */ void __RPC_FAR *pv,
+        /* [length_is][size_is][out][in] */ void *pv,
         /* [in] */ ULONG cb,
-		/* [out] */ ULONG __RPC_FAR *pcbRead) {
+		/* [out] */ ULONG *pcbRead) {
 		if (stream) {
 			stream->Read(pv, cb, pcbRead);
 			if (*pcbRead == cb) {
@@ -154,7 +154,7 @@ public:
     HRESULT STDMETHODCALLTYPE Seek( 
         /* [in] */ LARGE_INTEGER dlibMove,
         /* [in] */ DWORD dwOrigin,
-		/* [out] */ ULARGE_INTEGER __RPC_FAR *plibNewPosition) {
+		/* [out] */ ULARGE_INTEGER *plibNewPosition) {
 		return S_OK;
 	}
     

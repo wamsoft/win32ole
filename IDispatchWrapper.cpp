@@ -184,7 +184,7 @@ IDispatchWrapper::storeVariant(tTJSVariant &result, VARIANT &variant)
 	case (VT_BYREF | VT_VARIANT):
 		storeVariant(result, *variant.pvarVal);
 	default:
-		;//log(L"unkown result type");
+		;//log(TJS_W("unkown result type"));
 	}
 }
 
@@ -199,11 +199,11 @@ IDispatchWrapper::storeVariant(VARIANT &result, tTJSVariant &variant)
 	VariantClear(&result);
 	switch (variant.Type()) {
 	case tvtVoid:
-		//log(L"void");
+		//log(TJS_W("void"));
 		break;
 	case tvtObject:
 		// オブジェクト
-		//log(L"object");
+		//log(TJS_W("object"));
 		{
 			switch (variant.Type()) {
 			case tvtObject:
@@ -217,13 +217,13 @@ IDispatchWrapper::storeVariant(VARIANT &result, tTJSVariant &variant)
 		}
 		break;
 	case tvtString:
-		//log(L"string");
+		//log(TJS_W("string"));
 		// 文字列
 		V_VT(&result) = VT_BSTR;
 		V_BSTR(&result) = SysAllocString(variant.GetString());
 		break;
 	case tvtOctet:
-		//log(L"octet");
+		//log(TJS_W("octet"));
 		// オクテット列
 		{
 			tTJSVariantOctet *octet = variant.AsOctetNoAddRef();
@@ -252,12 +252,12 @@ IDispatchWrapper::storeVariant(VARIANT &result, tTJSVariant &variant)
 	case tvtInteger:
 		// COM は 64bit をサポートしていない!!
 		// ということで COM に渡す引数で整数値は 32bit を超えないように注意すること（涙）
-		//log(L"integer");
+		//log(TJS_W("integer"));
 		V_VT(&result) = VT_I4;
 		V_I4(&result) = (int)(variant);
 		break;
 	case tvtReal:
-		//log(L"real");
+		//log(TJS_W("real"));
 		V_VT(&result) = VT_R8;
 		V_R8(&result) = (double)(variant);
 		break;
@@ -283,7 +283,7 @@ IDispatchWrapper::~IDispatchWrapper()
 int
 IDispatchWrapper::Construct(iTJSDispatch2 *obj, VARIANT *pvarResult, int argc, VARIANT *argv, tjs_error &err)
 {
-	//log(L"construct");
+	//log(TJS_W("construct"));
 
 	int ret = S_OK;
 	
@@ -344,7 +344,7 @@ IDispatchWrapper::InvokeEx(iTJSDispatch2 *obj, const tjs_char *memberName, WORD 
 	} else if ((wFlags & DISPATCH_METHOD)) {
 
 		// メソッド呼び出し
-		//log(L"FuncCall %ls", memberName);
+		//log(TJS_W("FuncCall %ls"), memberName);
 		
 		// 引数変換
 		tTJSVariant **args = new tTJSVariant*[argc];
@@ -376,7 +376,7 @@ IDispatchWrapper::InvokeEx(iTJSDispatch2 *obj, const tjs_char *memberName, WORD 
 		
 	} else if ((wFlags & DISPATCH_PROPERTYGET)) {
 		
-		//log(L"PropGet %ls", memberName);
+		//log(TJS_W("PropGet %ls"), memberName);
 		
 		tTJSVariant result;
 		try {
@@ -393,7 +393,7 @@ IDispatchWrapper::InvokeEx(iTJSDispatch2 *obj, const tjs_char *memberName, WORD 
 		}
 	} else if ((wFlags & DISPATCH_PROPERTYPUT) && argc > 0) {
 
-		//log(L"PropPut %ls", memberName);
+		//log(TJS_W("PropPut %ls"), memberName);
 		
 		tTJSVariant arg;
 		storeVariant(arg, argv[0]);
@@ -411,7 +411,7 @@ IDispatchWrapper::InvokeEx(iTJSDispatch2 *obj, const tjs_char *memberName, WORD 
 		if (pei) {
 			memset(pei, 0, sizeof(EXCEPINFO));
 			pei->wCode = 0x0201;
-			pei->bstrSource = SysAllocString(L"TJScript");
+			pei->bstrSource = SysAllocString(TJS_W("TJScript"));
 			pei->bstrDescription = SysAllocString(errmesg.c_str());
 			pei->scode = DISP_E_EXCEPTION;
 		}
@@ -548,7 +548,7 @@ IDispatchWrapper::DeleteMemberByDispID(
 				ret = S_OK;
 			}
 		} catch(...)  {
-			log(L"DeleteMember で例外");
+			log(TJS_W("DeleteMember で例外"));
 		}
 	}
 	return ret;
@@ -585,7 +585,7 @@ public:
 												tTJSVariant **param,		// parameters
 												iTJSDispatch2 *objthis		// object as "this"
 												) {
-		//log(L"enumMemberCallback");
+		//log(TJS_W("enumMemberCallback"));
 		if (numparams > 1) {
 			tTVInteger flag = param[1]->AsInteger();
 			if (!(flag & TJS_HIDDENMEMBER)) {
@@ -612,7 +612,7 @@ IDispatchWrapper::GetNextDispID(
 		try {
 			Try_iTJSDispatch2_EnumMembers(obj, TJS_ENUM_NO_VALUE, &closure, obj);
 		} catch (...) {
-			log(L"EnumMembers で例外");
+			log(TJS_W("EnumMembers で例外"));
 		}
 		closure.Release();
 	}
@@ -720,7 +720,7 @@ iTJSDispatch2Wrapper::Invoke(IDispatch *dispatch,
 		case DISP_E_EXCEPTION:
 			{
 				ttstr msg = excepInfo.bstrSource;
-				msg += L":";
+				msg += TJS_W(":");
 				msg += excepInfo.bstrDescription;
 				TVPThrowExceptionMessage(msg.c_str());
 			}

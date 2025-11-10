@@ -73,7 +73,7 @@ public:
 	// IUnknown 実装
 	
 	HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid,
-											 void __RPC_FAR *__RPC_FAR *ppvObject) {
+											 void **ppvObject) {
 		if (riid == IID_IUnknown ||
 			riid == IID_IDispatch||
 			riid == diid) {
@@ -129,7 +129,7 @@ public:
 		}
 		HRESULT hr = IDispatchWrapper::InvokeEx(receiver, bstr, wFlags, pdispparams, pvarResult, pexcepinfo);
 		if (hr == DISP_E_MEMBERNOTFOUND) {
-			//log(L"member not found:%ws", bstr);
+			//log(TJS_W("member not found:%ws"), bstr);
 			hr = S_OK;
 		}
 		if (bstr) {
@@ -204,10 +204,10 @@ public:
 				/* get IDispatch interface */
 				hr = CoCreateInstance(clsid, NULL, CLSCTX_INPROC_SERVER | CLSCTX_LOCAL_SERVER, IID_IDispatch, (void**)&pDispatch);
 				if (!SUCCEEDED(hr)) {
-					log(L"CoCreateInstance failed %ws", progIdOrCLSID);
+					log(TJS_W("CoCreateInstance failed %ws"), progIdOrCLSID);
 				}
 			} else {
-				log(L"bad CLSID %ws", progIdOrCLSID);
+				log(TJS_W("bad CLSID %ws"), progIdOrCLSID);
 			}
 		}
 		tTJSVariant name(TJS_W("missing"));
@@ -271,7 +271,7 @@ protected:
 					 tTJSVariant *result,
 					 tjs_int numparams,
 					 tTJSVariant **param) {
-		//log(L"native invoke %d", numparams);
+		//log(TJS_W("native invoke %d"), numparams);
 		if (pDispatch) {
 			if (numparams > 0) {
 				if (param[0]->Type() == tvtString) {
@@ -532,7 +532,7 @@ protected:
 			success = self->addEvent(diidName, objthis);
 		}
 		if (!success) {
-			log(L"イベント[%ws]の登録に失敗しました", diidName);
+			log(TJS_W("イベント[%ws]の登録に失敗しました"), diidName);
 		}
 		return TJS_S_OK;
 	}
@@ -554,7 +554,7 @@ protected:
 						BSTR bstr = NULL;
 						unsigned int len;
 						if (SUCCEEDED(pTypeInfo->GetNames(pVarDesc->memid, &bstr, 1, &len)) && len >= 0 && bstr) {
-							//log(L"const:%s", bstr);
+							//log(TJS_W("const:%s"), bstr);
 							tTJSVariant result;
 							IDispatchWrapper::storeVariant(result, *(pVarDesc->lpvarValue));
 							target->PropSet(TJS_MEMBERENSURE|TJS_IGNOREPROP,
@@ -680,9 +680,9 @@ public:
 	// IUnknown 実装
 	
 	HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid,
-											 void __RPC_FAR *__RPC_FAR *ppvObject) {
+											 void **ppvObject) {
 		if (dispatchEx && (riid == IID_IUnknown || riid == IID_IDispatch || riid == IID_IDispatchEx)) {
-			//log(L"get dispatchEx");
+			//log(TJS_W("get dispatchEx"));
 			if (ppvObject == NULL)
 				return E_POINTER;
 			dispatchEx->AddRef();
@@ -754,27 +754,27 @@ public:
 		/* [in] */ DWORD dwID,
 		/* [in] */ DWORD x,
 		/* [in] */ DWORD y,
-		/* [in] */ IUnknown __RPC_FAR *pcmdtReserved,
-		/* [in] */ IDispatch __RPC_FAR *pdispReserved,
-		/* [retval][out] */ HRESULT __RPC_FAR *dwRetVal) {
+		/* [in] */ IUnknown *pcmdtReserved,
+		/* [in] */ IDispatch *pdispReserved,
+		/* [retval][out] */ HRESULT *dwRetVal) {
 		*dwRetVal = S_OK;      //This is what the WebBrowser control is looking for.
 		//You can show your own context menu here.
 		return S_OK;        
 	}
 
 	HRESULT STDMETHODCALLTYPE GetHostInfo( 
-		/* [out][in] */ DWORD __RPC_FAR *pdwFlags,
-		/* [out][in] */ DWORD __RPC_FAR *pdwDoubleClick) {
+		/* [out][in] */ DWORD *pdwFlags,
+		/* [out][in] */ DWORD *pdwDoubleClick) {
 		return E_NOTIMPL;
 	}
 
 	HRESULT STDMETHODCALLTYPE ShowUI( 
 		/* [in] */ DWORD dwID,
-		/* [in] */ IUnknown __RPC_FAR *pActiveObject,
-		/* [in] */ IUnknown __RPC_FAR *pCommandTarget,
-		/* [in] */ IUnknown __RPC_FAR *pFrame,
-		/* [in] */ IUnknown __RPC_FAR *pDoc,
-		/* [retval][out] */ HRESULT __RPC_FAR *dwRetVal) {
+		/* [in] */ IUnknown *pActiveObject,
+		/* [in] */ IUnknown *pCommandTarget,
+		/* [in] */ IUnknown *pFrame,
+		/* [in] */ IUnknown *pDoc,
+		/* [retval][out] */ HRESULT *dwRetVal) {
 		return E_NOTIMPL;
 	}
         
@@ -806,36 +806,36 @@ public:
 		/* [in] */ long top,
 		/* [in] */ long right,
 		/* [in] */ long bottom,
-		/* [in] */ IUnknown __RPC_FAR *pUIWindow,
+		/* [in] */ IUnknown *pUIWindow,
 		/* [in] */ VARIANT_BOOL fFrameWindow) {
 		return E_NOTIMPL;
 	}
 	
 	HRESULT STDMETHODCALLTYPE TranslateAccelerator( 
-		/* [in] */ DWORD hWnd,
+		/* [in] */ DWORD_PTR hWnd,
 		/* [in] */ DWORD nMessage,
-		/* [in] */ DWORD wParam,
-		/* [in] */ DWORD lParam,
+		/* [in] */ DWORD_PTR wParam,
+		/* [in] */ DWORD_PTR lParam,
 		/* [in] */ BSTR bstrGuidCmdGroup,
 		/* [in] */ DWORD nCmdID,
-		/* [retval][out] */ HRESULT __RPC_FAR *dwRetVal) {
+		/* [retval][out] */ HRESULT *dwRetVal) {
 		return E_NOTIMPL;
 	}
 	
 	HRESULT STDMETHODCALLTYPE GetOptionKeyPath( 
-		/* [out] */ BSTR __RPC_FAR *pbstrKey,
+		/* [out] */ BSTR  *pbstrKey,
 		/* [in] */ DWORD dw) {
 		return E_NOTIMPL;
 	}
         
 	HRESULT STDMETHODCALLTYPE GetDropTarget( 
-		/* [in] */ IUnknown __RPC_FAR *pDropTarget,
-		/* [out] */ IUnknown __RPC_FAR *__RPC_FAR *ppDropTarget) {
+		/* [in] */ IUnknown  *pDropTarget,
+		/* [out] */ IUnknown  **ppDropTarget) {
 		return E_NOTIMPL;
 	}
         
 	HRESULT STDMETHODCALLTYPE GetExternal( 
-		/* [out] */ IDispatch __RPC_FAR *__RPC_FAR *ppDispatch) {
+		/* [out] */ IDispatch **ppDispatch) {
 		*ppDispatch = this;
 		return S_OK;
 	}
@@ -843,13 +843,13 @@ public:
 	HRESULT STDMETHODCALLTYPE TranslateUrl( 
 		/* [in] */ DWORD dwTranslate,
 		/* [in] */ BSTR bstrURLIn,
-		/* [out] */ BSTR __RPC_FAR *pbstrURLOut) {
+		/* [out] */ BSTR *pbstrURLOut) {
 		return E_NOTIMPL;
 	}
         
 	HRESULT STDMETHODCALLTYPE FilterDataObject( 
-		/* [in] */ IUnknown __RPC_FAR *pDO,
-		/* [out] */ IUnknown __RPC_FAR *__RPC_FAR *ppDORet) {
+		/* [in] */ IUnknown *pDO,
+		/* [out] */ IUnknown **ppDORet) {
 		return E_NOTIMPL;
 	}
 };
@@ -874,13 +874,13 @@ protected:
 
 	// ユーザメッセージレシーバの登録/解除
 	void setReceiver(tTVPWindowMessageReceiver receiver, bool enable) {
-		tTJSVariant mode     = enable ? (tTVInteger)(tjs_int)wrmRegister : (tTVInteger)(tjs_int)wrmUnregister;
-		tTJSVariant proc     = (tTVInteger)(tjs_int)receiver;
-		tTJSVariant userdata = (tTVInteger)(tjs_int)this;
+		tTJSVariant mode     = enable ? (tTVInteger)(tjs_intptr_t)wrmRegister : (tTVInteger)(tjs_int)wrmUnregister;
+		tTJSVariant proc     = (tTVInteger)(tjs_intptr_t)receiver;
+		tTJSVariant userdata = (tTVInteger)(tjs_intptr_t)this;
 		tTJSVariant *p[] = {&mode, &proc, &userdata};
-		if (window->FuncCall(0, L"registerMessageReceiver", NULL, NULL, 4, p, window) != TJS_S_OK) {
+		if (window->FuncCall(0, TJS_W("registerMessageReceiver"), NULL, NULL, 4, p, window) != TJS_S_OK) {
 			if (enable) {
-				TVPThrowExceptionMessage(L"can't regist user message receiver");
+				TVPThrowExceptionMessage(TJS_W("can't regist user message receiver"));
 			}
 		}
 	}
@@ -929,7 +929,7 @@ protected:
 				// IDispatch取得
 				hr = QueryControl(IID_IDispatch, (void**)&pDispatch);
 			} else {
-				log(L"CreateControl failed %ws", progId.c_str());
+				log(TJS_W("CreateControl failed %ws"), progId.c_str());
 			}
 			SysFreeString(oleName);
 		}
@@ -1007,20 +1007,20 @@ END_MSG_MAP()
 		if (numparams >= 2 && param[1]->Type() == tvtObject) {
 			// ウインドウが指定
 			iTJSDispatch2 *win = param[1]->AsObjectNoAddRef();
-			if (win->IsInstanceOf(0, NULL, NULL, L"Window", win) == TJS_S_TRUE) {
+			if (win->IsInstanceOf(0, NULL, NULL, TJS_W("Window"), win) == TJS_S_TRUE) {
 				window = win;
 				window->AddRef();
 				setReceiver(messageHandler, true);
 				tTJSVariant hwnd;
 				if (win->PropGet(0, TJS_W("HWND"), NULL, &hwnd, win) == TJS_S_OK) {
-					HWND handle = (HWND)(int)hwnd;
+					HWND handle = (HWND)(tjs_intptr_t)hwnd;
 					if (handle) {
 						// 既に生成済み
 						createWindow(handle);
 					}
 				}
 			} else {
-				TVPThrowExceptionMessage(L"must set window object");
+				TVPThrowExceptionMessage(TJS_W("must set window object"));
 			}
 		} else {
 			// 独立ウインドウ
@@ -1202,7 +1202,7 @@ static void PreRegistCallback()
 		if (SUCCEEDED(OleInitialize(NULL))) {
 			gOLEInitialized = true;
 		} else {
-			log(L"OLE 初期化失敗");
+			log(TJS_W("OLE 初期化失敗"));
 		}
 	}
 	
