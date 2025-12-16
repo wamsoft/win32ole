@@ -138,3 +138,40 @@ class ActiveX extends WIN32OLE {
 	function onDestroy();
 
 };
+
+/**
+ * @description JScript 実行用ホスト。IActiveScript を利用して JScript の式評価と結果取得ができます。
+ * 例:
+ *   var js = new JScriptHost();
+ *   var r = js.eval("1+2"); // -> 3
+ *   js.addGlobal("tvp", global); // TJS の global オブジェクトを JScript 側に追加
+ *   var v = js.eval("tvp.version");
+ */
+class JScriptHost {
+
+    /**
+     * コンストラクタ
+     * @description JScript エンジンを生成して接続します。
+     */
+    function JScriptHost();
+
+    /**
+     * 式評価
+     * @param code 評価する JScript の式文字列
+     * @return 評価結果 (数値/文字列/bool/IDispatch ラップ 等)
+     */
+    function eval(code);
+
+    /**
+     * グローバルオブジェクト追加
+     * @param name JScript 側で参照する名前
+     * @param obj  追加するオブジェクト (TJS オブジェクト; IDispatch として公開)
+     */
+    function addGlobal(name, obj);
+
+    /**
+     * エンジン再初期化
+     * @description スクリプト状態を初期化し直します。
+     */
+    function reset();
+};

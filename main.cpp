@@ -20,6 +20,7 @@ static CComModule _Module;
 #define _ATL_DLL
 #include <atlhost.h>
 #include <ExDispID.h>
+#include <activscp.h>
 
 // ログ出力用
 static void log(const tjs_char *format, ...)
@@ -1185,6 +1186,8 @@ NCB_REGISTER_CLASS(ActiveX) {
 	NCB_PROPERTY(height, getHeight, setHeight);
 };
 
+
+
 //---------------------------------------------------------------------------
 
 // 吉里吉里のアーカイブにアクセスするための処理
@@ -1250,3 +1253,217 @@ NCB_PRE_REGIST_CALLBACK(PreRegistCallback);
 NCB_POST_REGIST_CALLBACK(PostRegistCallback);
 NCB_PRE_UNREGIST_CALLBACK(PreUnregistCallback);
 NCB_POST_UNREGIST_CALLBACK(PostUnregistCallback);
+
+//---------------------------------------------------------------------------
+// JScript ホスト
+
+class JScriptHost : public IActiveScriptSite
+{
+protected:
+	iTJSDispatch2 *objthis;
+	IActiveScript *pScript;
+	IActiveScriptParse *pParse;
+
+public:
+	JScriptHost(iTJSDispatch2 *objthis) : objthis(objthis), pScript(NULL), pParse(NULL) {
+		if (objthis) objthis->AddRef();
+		initialize();
+	}
+
+	~JScriptHost() {
+		clear();
+		if (objthis) { objthis->Release(); objthis = NULL; }
+	}
+
+	static tjs_error factory(JScriptHost **result, tjs_int numparams, tTJSVariant **param, iTJSDispatch2 *objthis) {
+		if (result) *result = new JScriptHost(objthis);
+		return TJS_S_OK;
+	}
+
+protected:
+	void clear() {
+		if (pScript) {
+			pScript->Close();
+			pScript->Release();
+			pScript = NULL;
+		}
+		if (pParse) {
+			pParse->Release();
+			pParse = NULL;
+		}
+	}
+
+	void initialize() {
+		clear();
+		HRESULT hr;
+
+		CLSID clsid;
+		CLSIDFromProgID(L"JScript", &clsid);
+
+		// JScript エンジン生成
+		hr = CoCreateInstance(clsid, NULL, CLSCTX_INPROC_SERVER, IID_IActiveScript, (void**)&pScript);
+		if (!SUCCEEDED(hr)) {
+			log(TJS_W("CoCreateInstance(CLSID_JScript) failed"));
+			return;
+		}
+		hr = pScript->QueryInterface(IID_IActiveScriptParse, (void**)&pParse);
+		if (!SUCCEEDED(hr)) {
+			log(TJS_W("QueryInterface(IActiveScriptParse) failed"));
+			return;
+		}
+		pParse->InitNew();
+		pScript->SetScriptSite(this);
+		pScript->SetScriptState(SCRIPTSTATE_CONNECTED);
+	}
+
+	static void variantToTJS(const VARIANT &v, tTJSVariant &out) {
+		switch (v.vt) {
+		case VT_EMPTY:
+		case VT_NULL:
+			out = tTJSVariant();
+			break;
+		case VT_BOOL:
+			out = (v.boolVal == VARIANT_TRUE) ? true : false;
+			break;
+		case VT_I4:
+		case VT_INT:
+			out = (tjs_int)v.lVal;
+			break;
+		case VT_R8:
+			out = v.dblVal;
+			break;
+		case VT_BSTR: {
+			out = ttstr(v.bstrVal);
+			break;
+		}
+		case VT_DISPATCH: {
+			// ラップして TJS から操作可能に
+			iTJSDispatch2 *wrap = new iTJSDispatch2Wrapper(v.pdispVal);
+			out = wrap;
+			wrap->Release();
+			break;
+		}
+		default:
+			// 簡易変換: 文字列化
+			VARIANT tmp; VariantInit(&tmp);
+			if (SUCCEEDED(VariantChangeType(&tmp, const_cast<VARIANT*>(&v), 0, VT_BSTR))) {
+				out = ttstr(tmp.bstrVal);
+				VariantClear(&tmp);
+			} else {
+				out = tTJSVariant();
+			}
+			break;
+		}
+	}
+
+public:
+	// TJS からコード評価
+	static tjs_error evalMethod(tTJSVariant *result, tjs_int numparams, tTJSVariant **param, JScriptHost *self) {
+		if (!self || !self->pParse) return TJS_E_FAIL;
+		if (numparams < 1) return TJS_E_BADPARAMCOUNT;
+		const tjs_char *code = param[0]->GetString();
+
+		EXCEPINFO ei; memset(&ei, 0, sizeof(ei));
+		VARIANT vres; VariantInit(&vres);
+		HRESULT hr = self->pParse->ParseScriptText(code, NULL, NULL, NULL, 0, 0, SCRIPTTEXT_ISVISIBLE | SCRIPTTEXT_ISEXPRESSION, &vres, &ei);
+		if (SUCCEEDED(hr)) {
+			if (result) {
+				tTJSVariant r; variantToTJS(vres, r);
+				*result = r;
+			}
+		} else {
+			if (ei.bstrDescription) {
+				log(TJS_W("JScript error: %ws"), ei.bstrDescription);
+			} else {
+				log(TJS_W("JScript evaluation failed"));
+			}
+		}
+		VariantClear(&vres);
+		return TJS_S_OK;
+	}
+
+	// グローバルに COM オブジェクトを追加 (名前, IDispatch)
+	static tjs_error addGlobalMethod(tTJSVariant *result, tjs_int numparams, tTJSVariant **param, JScriptHost *self) {
+		if (!self || !self->pScript) return TJS_E_FAIL;
+		if (numparams < 2) return TJS_E_BADPARAMCOUNT;
+		const tjs_char *name = param[0]->GetString();
+		iTJSDispatch2 *obj = param[1]->AsObject();
+		if (!obj) return TJS_E_INVALIDPARAM;
+
+		// TJS オブジェクト -> IDispatch に変換
+		IDispatch *disp = new IDispatchWrapper(obj);
+		obj->Release();
+
+		// 名前を BSTR へ
+		BSTR bname = SysAllocString(name);
+		HRESULT hr = self->pScript->AddNamedItem(bname, SCRIPTITEM_ISVISIBLE | SCRIPTITEM_ISSOURCE | SCRIPTITEM_GLOBALMEMBERS);
+		SysFreeString(bname);
+
+		if (FAILED(hr)) {
+			log(TJS_W("AddNamedItem failed"));
+		}
+
+		// `GetItemInfo` で返すために保持: 簡易に `namedObjects` に保存
+		self->namedObjects.push_back(std::pair<ttstr, CComPtr<IDispatch>>(ttstr(name), disp));
+		disp->Release();
+		return TJS_S_OK;
+	}
+
+	static tjs_error resetMethod(tTJSVariant *result, tjs_int numparams, tTJSVariant **param, JScriptHost *self) {
+		if (!self) return TJS_E_FAIL;
+		self->initialize();
+		return TJS_S_OK;
+	}
+
+	// IActiveScriptSite 実装
+private:
+	std::vector<std::pair<ttstr, CComPtr<IDispatch>>> namedObjects;
+
+public:
+	HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void **ppvObject) {
+		if (!ppvObject) return E_POINTER;
+		if (riid == IID_IUnknown || riid == IID_IActiveScriptSite) {
+			*ppvObject = static_cast<IActiveScriptSite*>(this);
+			return S_OK;
+		}
+		*ppvObject = NULL;
+		return E_NOINTERFACE;
+	}
+	ULONG STDMETHODCALLTYPE AddRef() { return 1; }
+	ULONG STDMETHODCALLTYPE Release() { return 1; }
+
+	HRESULT STDMETHODCALLTYPE GetLCID(LCID *plcid) { if (!plcid) return E_POINTER; *plcid = LOCALE_SYSTEM_DEFAULT; return S_OK; }
+
+	HRESULT STDMETHODCALLTYPE GetItemInfo(LPCOLESTR pstrName, DWORD dwReturnMask, IUnknown **ppiunkItem, ITypeInfo **ppti) {
+		if ((dwReturnMask & SCRIPTINFO_IUNKNOWN) && ppiunkItem) {
+			for (size_t i=0;i<namedObjects.size();++i) {
+				if (wcscmp(namedObjects[i].first.c_str(), pstrName) == 0) {
+					*ppiunkItem = namedObjects[i].second;
+					return S_OK;
+				}
+			}
+		}
+		return TYPE_E_ELEMENTNOTFOUND;
+	}
+
+	HRESULT STDMETHODCALLTYPE GetDocVersionString(BSTR *pbstrVersion) { if (!pbstrVersion) return E_POINTER; *pbstrVersion = SysAllocString(L"1.0"); return S_OK; }
+	HRESULT STDMETHODCALLTYPE OnScriptTerminate(const VARIANT *pvarResult, const EXCEPINFO *pexcepInfo) { return S_OK; }
+	HRESULT STDMETHODCALLTYPE OnStateChange(SCRIPTSTATE ssScriptState) { return S_OK; }
+	HRESULT STDMETHODCALLTYPE OnScriptError(IActiveScriptError *pse) {
+		if (!pse) return E_FAIL;
+		EXCEPINFO ei; memset(&ei,0,sizeof(ei));
+		pse->GetExceptionInfo(&ei);
+		if (ei.bstrDescription) log(TJS_W("Script error: %ws"), ei.bstrDescription);
+		return S_OK;
+	}
+	HRESULT STDMETHODCALLTYPE OnEnterScript(void) { return S_OK; }
+	HRESULT STDMETHODCALLTYPE OnLeaveScript(void) { return S_OK; }
+};
+
+NCB_REGISTER_CLASS(JScriptHost) {
+	Factory(&ClassT::factory);
+	RawCallback("eval", &ClassT::evalMethod, 0);
+	RawCallback("addGlobal", &ClassT::addGlobalMethod, 0);
+	RawCallback("reset", &ClassT::resetMethod, 0);
+}
+

@@ -3,7 +3,7 @@ Author: わたなべごう
 
 ●これはなに？
 
-吉里吉里の OLE/ActiveX 機能拡張です。
+吉里吉里の OLE/ActiveX/JScriptHost 機能拡張です。
 
 ●使用方法
 
