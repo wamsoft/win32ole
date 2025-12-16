@@ -1402,7 +1402,7 @@ protected:
 			// get
 			tTJSVariant result;
 			tjs_error err;
-			ret = TJS_SUCCEEDED(err = invoke(DISPATCH_PROPERTYGET|DISPATCH_METHOD, membername, &result, 0, NULL));
+			ret = TJS_SUCCEEDED(err = invoke(DISPATCH_PROPERTYGET, membername, &result, 0, NULL));
 			if (err == TJS_E_BADPARAMCOUNT) {
 				result = new iTJSDispatch2WrapperForMethod(pDispatch, membername);
 				ret = true;
@@ -1482,7 +1482,7 @@ public:
 	}
 
 	static tjs_error invokeMethod(tTJSVariant *result, tjs_int numparams, tTJSVariant **param, JScriptHost *self) {
-		return self->invoke(DISPATCH_PROPERTYGET|DISPATCH_METHOD, result, numparams, param);
+		return self->invoke(DISPATCH_METHOD, result, numparams, param);
 	}
 	
 	static tjs_error setMethod(tTJSVariant *result, tjs_int numparams, tTJSVariant **param, JScriptHost *self) {
