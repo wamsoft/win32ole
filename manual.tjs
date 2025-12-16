@@ -163,7 +163,7 @@ class JScriptHost {
     function eval(code);
 
     /**
-     * グローバルオブジェクト追加
+     * グローバルオブジェクト追加（JScript 内部の namedObject 一覧に登録）
      * @param name JScript 側で参照する名前
      * @param obj  追加するオブジェクト (TJS オブジェクト; IDispatch として公開)
      */
@@ -174,4 +174,35 @@ class JScriptHost {
      * @description スクリプト状態を初期化し直します。
      */
     function reset();
+
+    // -------------------------------------------------------------------------------
+    // JScript の global に対する直接操作メソッド
+    // GetScriptDispatch() で取得した IDispatch に対して WIN32OLE と同じ操作を行います。
+    // -------------------------------------------------------------------------------
+
+    /**
+     * メソッドの実行
+     * @param name メソッド名
+     * @param ... 以下パラメータ
+     */
+    function invoke(name, ...);
+
+    /**
+     * プロパティの設定
+     * @param name プロパティ名
+     * @parma value 設定値
+     */
+    function set(name, value);
+
+    /**
+     * プロパティの取得
+     * @param name プロパティ名
+     * @return 設定値
+     */
+    function get(name);
+
+    /**
+     * TJS missing処理。未登録の名前はそのまま set/get/invoke 処理が試みられます
+     */
+    function missing(...);
 };

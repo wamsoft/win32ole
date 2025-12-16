@@ -1260,13 +1260,18 @@ NCB_POST_UNREGIST_CALLBACK(PostUnregistCallback);
 class JScriptHost : public IActiveScriptSite
 {
 protected:
-	iTJSDispatch2 *objthis;
-	IActiveScript *pScript;
-	IActiveScriptParse *pParse;
+	iTJSDispatch2 *objthis; //< TJS2 インスタンス
+	IActiveScript *pScript; //< スクリプトエンジン
+	IActiveScriptParse *pParse; //< スクリプトパースインターフェース
+	IDispatch *pDispatch = nullptr; //< グローバルオブジェクト
 
 public:
-	JScriptHost(iTJSDispatch2 *objthis) : objthis(objthis), pScript(NULL), pParse(NULL) {
-		if (objthis) objthis->AddRef();
+	JScriptHost(iTJSDispatch2 *objthis) : objthis(objthis), pScript(NULL), pParse(NULL), pDispatch(NULL) {
+		if (objthis) {
+			objthis->AddRef();
+			tTJSVariant name(TJS_W("missing"));
+			objthis->ClassInstanceInfo(TJS_CII_SET_MISSING, 0, &name);
+		}
 		initialize();
 	}
 
@@ -1282,6 +1287,10 @@ public:
 
 protected:
 	void clear() {
+		if (pDispatch) {
+			pDispatch->Release();
+			pDispatch = NULL;
+		}
 		if (pScript) {
 			pScript->Close();
 			pScript->Release();
@@ -1314,46 +1323,102 @@ protected:
 		pParse->InitNew();
 		pScript->SetScriptSite(this);
 		pScript->SetScriptState(SCRIPTSTATE_CONNECTED);
+
+		hr = pScript->GetScriptDispatch(nullptr, &pDispatch);
+		if (FAILED(hr) || !pDispatch) {
+			log(TJS_W("Failed to get global Javascript dispatch"));
+		}
 	}
 
-	static void variantToTJS(const VARIANT &v, tTJSVariant &out) {
-		switch (v.vt) {
-		case VT_EMPTY:
-		case VT_NULL:
-			out = tTJSVariant();
-			break;
-		case VT_BOOL:
-			out = (v.boolVal == VARIANT_TRUE) ? true : false;
-			break;
-		case VT_I4:
-		case VT_INT:
-			out = (tjs_int)v.lVal;
-			break;
-		case VT_R8:
-			out = v.dblVal;
-			break;
-		case VT_BSTR: {
-			out = ttstr(v.bstrVal);
-			break;
+	/**
+	 * メソッド実行
+	 * メンバ名を直接指定
+	 * @param wFlag 実行フラグ
+	 * @param membername メンバ名
+	 * @param result 結果
+	 * @param numparams 引数の数
+	 * @param param 引数
+	 */
+	tjs_error invoke(DWORD wFlags,
+					 const tjs_char *membername,
+					 tTJSVariant *result,
+					 tjs_int numparams,
+					 tTJSVariant **param) {
+		if (pDispatch) {
+			return iTJSDispatch2Wrapper::Invoke(pDispatch,
+												wFlags,
+												membername,
+												result,
+												numparams,
+												param);
 		}
-		case VT_DISPATCH: {
-			// ラップして TJS から操作可能に
-			iTJSDispatch2 *wrap = new iTJSDispatch2Wrapper(v.pdispVal);
-			out = wrap;
-			wrap->Release();
-			break;
-		}
-		default:
-			// 簡易変換: 文字列化
-			VARIANT tmp; VariantInit(&tmp);
-			if (SUCCEEDED(VariantChangeType(&tmp, const_cast<VARIANT*>(&v), 0, VT_BSTR))) {
-				out = ttstr(tmp.bstrVal);
-				VariantClear(&tmp);
+		return TJS_E_FAIL;
+	}
+
+	/**
+	 * メソッド実行
+	 * パラメータの１つ目がメソッド名
+	 * @param wFlag 実行フラグ
+	 * @param result 結果
+	 * @param numparams 引数の数
+	 * @param param 引数
+	 */
+	tjs_error invoke(DWORD wFlags,
+					 tTJSVariant *result,
+					 tjs_int numparams,
+					 tTJSVariant **param) {
+		//log(TJS_W("native invoke %d"), numparams);
+		if (pDispatch) {
+			if (numparams > 0) {
+				if (param[0]->Type() == tvtString) {
+					return iTJSDispatch2Wrapper::Invoke(pDispatch,
+														wFlags,
+														param[0]->GetString(),
+														result,
+														numparams - 1,
+														param ? param + 1 : NULL);
+				} else {
+					return TJS_E_INVALIDPARAM;
+				}
 			} else {
-				out = tTJSVariant();
+				return TJS_E_BADPARAMCOUNT;
 			}
-			break;
 		}
+		return TJS_E_FAIL;
+	}
+
+	/**
+	 * メソッド実行
+	 */
+	tjs_error missing(tTJSVariant *result, tjs_int numparams, tTJSVariant **param) {
+		
+		if (numparams < 3) {return TJS_E_BADPARAMCOUNT;};
+		bool ret = false;
+		const tjs_char *membername = param[1]->GetString();
+		if ((int)*param[0]) {
+			// put
+			ret = TJS_SUCCEEDED(invoke(DISPATCH_PROPERTYPUT, membername, NULL, 1, &param[2]));
+		} else {
+			// get
+			tTJSVariant result;
+			tjs_error err;
+			ret = TJS_SUCCEEDED(err = invoke(DISPATCH_PROPERTYGET|DISPATCH_METHOD, membername, &result, 0, NULL));
+			if (err == TJS_E_BADPARAMCOUNT) {
+				result = new iTJSDispatch2WrapperForMethod(pDispatch, membername);
+				ret = true;
+			}
+			if (ret) {
+				iTJSDispatch2 *value = param[2]->AsObject();
+				if (value) {
+					value->PropSet(0, NULL, NULL, &result, NULL);
+					value->Release();
+				}
+			}
+		}
+		if (result) {
+			*result = ret;
+		}
+		return TJS_S_OK;
 	}
 
 public:
@@ -1368,7 +1433,8 @@ public:
 		HRESULT hr = self->pParse->ParseScriptText(code, NULL, NULL, NULL, 0, 0, SCRIPTTEXT_ISVISIBLE | SCRIPTTEXT_ISEXPRESSION, &vres, &ei);
 		if (SUCCEEDED(hr)) {
 			if (result) {
-				tTJSVariant r; variantToTJS(vres, r);
+				tTJSVariant r; 
+				IDispatchWrapper::storeVariant(vres, r);
 				*result = r;
 			}
 		} else {
@@ -1413,6 +1479,22 @@ public:
 		if (!self) return TJS_E_FAIL;
 		self->initialize();
 		return TJS_S_OK;
+	}
+
+	static tjs_error invokeMethod(tTJSVariant *result, tjs_int numparams, tTJSVariant **param, JScriptHost *self) {
+		return self->invoke(DISPATCH_PROPERTYGET|DISPATCH_METHOD, result, numparams, param);
+	}
+	
+	static tjs_error setMethod(tTJSVariant *result, tjs_int numparams, tTJSVariant **param, JScriptHost *self) {
+		return self->invoke(DISPATCH_PROPERTYPUT, result, numparams, param);
+	}
+	
+	static tjs_error getMethod(tTJSVariant *result, tjs_int numparams, tTJSVariant **param, JScriptHost *self) {
+		return self->invoke(DISPATCH_PROPERTYGET, result, numparams, param);
+	}
+
+	static tjs_error missingMethod(tTJSVariant *result, tjs_int numparams, tTJSVariant **param, JScriptHost *self) {
+		return self->missing(result, numparams, param);
 	}
 
 	// IActiveScriptSite 実装
@@ -1465,5 +1547,9 @@ NCB_REGISTER_CLASS(JScriptHost) {
 	RawCallback("eval", &ClassT::evalMethod, 0);
 	RawCallback("addGlobal", &ClassT::addGlobalMethod, 0);
 	RawCallback("reset", &ClassT::resetMethod, 0);
+	RawCallback("invoke",  &ClassT::invokeMethod,  0);
+	RawCallback("set",     &ClassT::setMethod,     0);
+	RawCallback("get",     &ClassT::getMethod,     0);
+	RawCallback("missing", &ClassT::missingMethod, 0);
 }
 
